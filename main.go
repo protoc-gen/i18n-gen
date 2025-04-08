@@ -18,6 +18,7 @@ func main() {
 	// Define flags
 	protoFile := flag.String("P", "internal/common/xerr/errors.proto", "Path to the .proto file")
 	outputDir := flag.String("O", "./i18n/", "Path to the output directory")
+	languages := flag.String("L", "en,zh", "Comma-separated list of languages")
 	flag.Parse()
 
 	// Parse the .proto file
@@ -34,7 +35,7 @@ func main() {
 	}
 
 	// Generate or update TOML files
-	for _, v := range []string{"en", "zh"} {
+	for _, v := range strings.Split(*languages, ",") {
 		tomlPath := fmt.Sprintf("%s/%s.toml", *outputDir, v)
 		if err := generateTOML(entries, tomlPath); err != nil {
 			log.Printf("Failed to generate %s.toml: %v\n", v, err)
