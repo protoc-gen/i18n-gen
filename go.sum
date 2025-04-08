@@ -1,0 +1,4 @@
+github.com/emicklei/proto v1.14.0 h1:WYxC0OrBuuC+FUCTZvb8+fzEHdZMwLEF+OnVfZA3LXU=
+github.com/emicklei/proto v1.14.0/go.mod h1:rn1FgRS/FANiZdD2djyH7TMA9jdRDcYQ9IEN9yvjX0A=
+golang.org/x/text v0.24.0 h1:dd5Bzh4yt5KYA8f9CJHCP4FB4D51c2c6JvN37xJJkJ0=
+golang.org/x/text v0.24.0/go.mod h1:L8rBsPeo2pSS+xqN0d5u2ikmjtmoJbDBT1b7nHvFCdU=
