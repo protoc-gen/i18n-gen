@@ -45,7 +45,7 @@ func main() {
 	}
 }
 
-// parseProto reads the .proto file and extracts enum names as keys in order.
+// parseProto reads the .proto file and extracts enum names and validation IDs as keys in order.
 func parseProto(filePath string) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -62,6 +62,7 @@ func parseProto(filePath string) ([]string, error) {
 		return nil, fmt.Errorf("parse proto: %w", err)
 	}
 
+	// First pass: collect enum entries
 	proto.Walk(definition,
 		proto.WithEnum(func(e *proto.Enum) {
 			for _, elem := range e.Elements {
@@ -71,6 +72,33 @@ func parseProto(filePath string) ([]string, error) {
 			}
 		}),
 	)
+
+	// Second pass: read the file again to extract validation IDs
+	file.Seek(0, 0)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "(buf.validate.field).cel") {
+			// Look for the next line containing "id:"
+			for scanner.Scan() {
+				nextLine := strings.TrimSpace(scanner.Text())
+				if strings.HasPrefix(nextLine, "id:") {
+					// Extract the ID value between quotes
+					idStart := strings.Index(nextLine, "\"") + 1
+					idEnd := strings.LastIndex(nextLine, "\"")
+					if idStart > 0 && idEnd > idStart {
+						id := nextLine[idStart:idEnd]
+						entries = append(entries, id)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("read proto file: %w", err)
+	}
 
 	return entries, nil
 }
