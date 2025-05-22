@@ -146,7 +146,7 @@ func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, map[s
 			var message string
 			for scanner.Scan() {
 				nextLine := strings.TrimSpace(scanner.Text())
-				// log.Printf("nextLine: %s", nextLine)
+				log.Printf("nextLine: %s", nextLine)
 				if strings.HasPrefix(nextLine, "id:") {
 					// Extract the ID value between quotes
 					idStart := strings.Index(nextLine, "\"") + 1
@@ -168,11 +168,10 @@ func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, map[s
 				}
 				if strings.HasPrefix(nextLine, "}];") || strings.HasPrefix(nextLine, "},") {
 					if id != "" {
-						// log.Printf("id: %s, message: %s", id, message)
+						log.Printf("id: %s, message: %s", id, message)
 						messages[id] = message
 					}
 					id, message = "", ""
-					break
 				}
 			}
 		}
