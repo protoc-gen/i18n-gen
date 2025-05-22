@@ -52,9 +52,10 @@ func main() {
 
 	// Parse all proto files and collect entries
 	var allEntries []string
+	allMessages := make(map[string]string)
 	seenEntries := make(map[string]bool)
 	for _, protoFile := range protoFiles {
-		entries, err := parseProto(protoFile, *enumPrefix, *enumSuffix)
+		entries, messages, err := parseProto(protoFile, *enumPrefix, *enumSuffix)
 		if err != nil {
 			log.Printf("Failed to parse proto file %s: %v\n", protoFile, err)
 			continue
@@ -65,6 +66,7 @@ func main() {
 			if !seenEntries[entry] {
 				seenEntries[entry] = true
 				allEntries = append(allEntries, entry)
+				allMessages[entry] = messages[entry]
 			}
 		}
 	}
@@ -88,7 +90,7 @@ func main() {
 			continue
 		}
 		tomlPath := fmt.Sprintf("%s/%s.toml", *outputDir, lang)
-		if err := generateTOML(allEntries, tomlPath); err != nil {
+		if err := generateTOML(allEntries, allMessages, tomlPath); err != nil {
 			log.Printf("Failed to generate %s.toml: %v\n", lang, err)
 			continue
 		}
@@ -97,10 +99,10 @@ func main() {
 }
 
 // parseProto reads the .proto file and extracts enum names and validation IDs as keys in order.
-func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, error) {
+func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, map[string]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("open proto file: %w", err)
+		return nil, nil, fmt.Errorf("open proto file: %w", err)
 	}
 	defer file.Close()
 
@@ -110,7 +112,7 @@ func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, error
 
 	definition, err := parser.Parse()
 	if err != nil {
-		return nil, fmt.Errorf("parse proto: %w", err)
+		return nil, nil, fmt.Errorf("parse proto: %w", err)
 	}
 
 	// First pass: collect enum entries
@@ -132,6 +134,7 @@ func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, error
 		}),
 	)
 
+	messages := make(map[string]string)
 	// Second pass: read the file again to extract validation IDs
 	file.Seek(0, 0)
 	scanner := bufio.NewScanner(file)
@@ -139,31 +142,50 @@ func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, error
 		line := scanner.Text()
 		if strings.Contains(line, "(buf.validate.field).cel") {
 			// Look for the next line containing "id:"
+			var id string
+			var message string
 			for scanner.Scan() {
 				nextLine := strings.TrimSpace(scanner.Text())
+				// log.Printf("nextLine: %s", nextLine)
 				if strings.HasPrefix(nextLine, "id:") {
 					// Extract the ID value between quotes
 					idStart := strings.Index(nextLine, "\"") + 1
 					idEnd := strings.LastIndex(nextLine, "\"")
 					if idStart > 0 && idEnd > idStart {
-						id := nextLine[idStart:idEnd]
+						id = nextLine[idStart:idEnd]
 						entries = append(entries, id)
 					}
-					break
+					continue
+				}
+				if strings.HasPrefix(nextLine, "message:") {
+					// Extract the message value between quotes
+					msgStart := strings.Index(nextLine, "\"") + 1
+					msgEnd := strings.LastIndex(nextLine, "\"")
+					if msgStart > 0 && msgEnd > msgStart {
+						message = nextLine[msgStart:msgEnd]
+					}
+					continue
+				}
+				if strings.HasPrefix(nextLine, "}];") || strings.HasPrefix(nextLine, "},") {
+					if id != "" {
+						// log.Printf("id: %s, message: %s", id, message)
+						messages[id] = message
+					}
+					continue
 				}
 			}
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("read proto file: %w", err)
+		return nil, nil, fmt.Errorf("read proto file: %w", err)
 	}
 
-	return entries, nil
+	return entries, messages, nil
 }
 
 // generateTOML updates or creates a TOML file based on the provided entries and maintains order.
-func generateTOML(entries []string, filePath string) error {
+func generateTOML(entries []string, messages map[string]string, filePath string) error {
 	existingEntries, err := loadExistingTOML(filePath)
 	if err != nil {
 		return fmt.Errorf("load existing TOML: %w", err)
@@ -182,7 +204,11 @@ func generateTOML(entries []string, filePath string) error {
 	// Generate TOML content
 	var buffer bytes.Buffer
 	for _, entry := range entries {
-		buffer.WriteString(fmt.Sprintf("[%s]\nother = \"%s\"\n\n", entry, entryMap[entry]))
+		existingMessage := entryMap[entry]
+		if existingMessage == "" {
+			existingMessage = messages[entry]
+		}
+		buffer.WriteString(fmt.Sprintf("[%s]\nother = \"%s\"\n\n", entry, existingMessage))
 	}
 
 	// Write the updated content to the file
