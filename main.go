@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/emicklei/proto"
@@ -16,15 +17,58 @@ import (
 
 func main() {
 	// Define flags
-	protoFile := flag.String("P", "internal/common/xerr/errors.proto", "Path to the .proto file")
+	protoPattern := flag.String("P", "internal/common/xerr/errors.proto", "Path pattern to the .proto files (supports glob patterns)")
 	outputDir := flag.String("O", "./i18n/", "Path to the output directory")
 	languages := flag.String("L", "en,zh", "Comma-separated list of languages")
 	flag.Parse()
 
-	// Parse the .proto file
-	entries, err := parseProto(*protoFile)
+	// Find all matching proto files recursively
+	var protoFiles []string
+	err := filepath.Walk(filepath.Dir(*protoPattern), func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasSuffix(path, ".proto") {
+			protoFiles = append(protoFiles, path)
+		}
+		return nil
+	})
 	if err != nil {
-		log.Printf("Failed to parse proto file: %v\n", err)
+		log.Printf("Failed to find proto files: %v\n", err)
+		return
+	}
+	if len(protoFiles) == 0 {
+		log.Printf("No proto files found in directory: %s\n", filepath.Dir(*protoPattern))
+		return
+	}
+
+	// Print found files for debugging
+	log.Printf("Found %d proto files:\n", len(protoFiles))
+	for _, file := range protoFiles {
+		log.Printf("- %s\n", file)
+	}
+
+	// Parse all proto files and collect entries
+	var allEntries []string
+	seenEntries := make(map[string]bool)
+	for _, protoFile := range protoFiles {
+		entries, err := parseProto(protoFile)
+		if err != nil {
+			log.Printf("Failed to parse proto file %s: %v\n", protoFile, err)
+			continue
+		}
+
+		// Add unique entries while maintaining order
+		for _, entry := range entries {
+			if !seenEntries[entry] {
+				seenEntries[entry] = true
+				allEntries = append(allEntries, entry)
+			}
+		}
+	}
+
+	if len(allEntries) == 0 {
+		log.Printf("No entries found in any proto files\n")
 		return
 	}
 
@@ -35,13 +79,18 @@ func main() {
 	}
 
 	// Generate or update TOML files
-	for _, v := range strings.Split(*languages, ",") {
-		tomlPath := fmt.Sprintf("%s/%s.toml", *outputDir, v)
-		if err := generateTOML(entries, tomlPath); err != nil {
-			log.Printf("Failed to generate %s.toml: %v\n", v, err)
-			return
+	langList := strings.Split(*languages, ",")
+	for _, lang := range langList {
+		lang = strings.TrimSpace(lang)
+		if lang == "" {
+			continue
 		}
-		log.Printf("%s.toml generated/updated successfully.", v)
+		tomlPath := fmt.Sprintf("%s/%s.toml", *outputDir, lang)
+		if err := generateTOML(allEntries, tomlPath); err != nil {
+			log.Printf("Failed to generate %s.toml: %v\n", lang, err)
+			continue
+		}
+		log.Printf("%s.toml generated/updated successfully.", lang)
 	}
 }
 
