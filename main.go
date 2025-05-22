@@ -20,6 +20,8 @@ func main() {
 	protoPattern := flag.String("P", "internal/common/xerr/errors.proto", "Path pattern to the .proto files (supports glob patterns)")
 	outputDir := flag.String("O", "./i18n/", "Path to the output directory")
 	languages := flag.String("L", "en,zh", "Comma-separated list of languages")
+	enumPrefix := flag.String("prefix", "", "Only process enums with this prefix (optional)")
+	enumSuffix := flag.String("suffix", "", "Only process enums with this suffix (optional)")
 	flag.Parse()
 
 	// Find all matching proto files recursively
@@ -52,7 +54,7 @@ func main() {
 	var allEntries []string
 	seenEntries := make(map[string]bool)
 	for _, protoFile := range protoFiles {
-		entries, err := parseProto(protoFile)
+		entries, err := parseProto(protoFile, *enumPrefix, *enumSuffix)
 		if err != nil {
 			log.Printf("Failed to parse proto file %s: %v\n", protoFile, err)
 			continue
@@ -95,7 +97,7 @@ func main() {
 }
 
 // parseProto reads the .proto file and extracts enum names and validation IDs as keys in order.
-func parseProto(filePath string) ([]string, error) {
+func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("open proto file: %w", err)
@@ -114,6 +116,14 @@ func parseProto(filePath string) ([]string, error) {
 	// First pass: collect enum entries
 	proto.Walk(definition,
 		proto.WithEnum(func(e *proto.Enum) {
+			// Check if enum name matches prefix/suffix criteria
+			if enumPrefix != "" && !strings.HasPrefix(e.Name, enumPrefix) {
+				return
+			}
+			if enumSuffix != "" && !strings.HasSuffix(e.Name, enumSuffix) {
+				return
+			}
+
 			for _, elem := range e.Elements {
 				if field, ok := elem.(*proto.EnumField); ok {
 					entries = append(entries, field.Name)
