@@ -166,7 +166,7 @@ func parseProto(filePath string, enumPrefix, enumSuffix string) ([]string, map[s
 					}
 					continue
 				}
-				if strings.HasPrefix(nextLine, "}];") || strings.HasPrefix(nextLine, "},") {
+				if strings.HasPrefix(nextLine, "}];") || strings.HasPrefix(nextLine, "},") || strings.HasPrefix(nextLine, "};") {
 					if id != "" {
 						// log.Printf("id: %s, message: %s", id, message)
 						messages[id] = message
